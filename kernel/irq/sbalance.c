@@ -30,8 +30,12 @@
 #include <linux/freezer.h>
 #include <linux/irq.h>
 #include <linux/list_sort.h>
+#include <linux/module.h>
 #include "../sched/sched.h"
 #include "internals.h"
+
+uint __read_mostly sbalance_debug = 0;
+module_param(sbalance_debug, uint, 0644);
 
 /* Perform IRQ balancing every POLL_MS milliseconds */
 #define POLL_MS CONFIG_IRQ_SBALANCE_POLL_MSEC
@@ -150,6 +154,15 @@ static int move_irq_to_cpu(struct bal_irq *bi, int cpu)
 		ret = irq_set_affinity_locked(&desc->irq_data, cpumask_of(cpu),
 					      false);
 	} else {
+		if (sbalance_debug) {
+			if (desc->action && desc->action->name)
+				pr_info("Error: IRQ%d (%s) was moved to CPU%d by something else (expected CPU%d))\n",
+					irq_desc_get_irq(desc),
+					desc->action->name, prev_cpu, bi->prev_cpu);
+			else
+				pr_info("Error: IRQ%d was moved to CPU%d by something else (expected CPU%d)\n",
+					irq_desc_get_irq(desc), prev_cpu, bi->prev_cpu);
+		}
 		bi->prev_cpu = prev_cpu;
 		ret = -EINVAL;
 	}
@@ -158,8 +171,15 @@ static int move_irq_to_cpu(struct bal_irq *bi, int cpu)
 	if (!ret) {
 		/* Update the old interrupt count using the new CPU */
 		bi->old_nr = *per_cpu_ptr(desc->kstat_irqs, cpu);
-		pr_debug("Moved IRQ%d (CPU%d -> CPU%d)\n",
-			 irq_desc_get_irq(desc), prev_cpu, cpu);
+		if (sbalance_debug) {
+			if (desc->action && desc->action->name)
+				pr_info("Moved IRQ%d (%s) (CPU%d -> CPU%d)\n",
+					irq_desc_get_irq(desc),
+					desc->action->name, prev_cpu, cpu);
+			else
+				pr_info("Moved IRQ%d (CPU%d -> CPU%d)\n",
+					irq_desc_get_irq(desc), prev_cpu, cpu);
+		}
 	}
 	return ret;
 }
@@ -241,8 +261,18 @@ static void balance_irqs(void)
 		bd->intrs += bi->delta_nr;
 
 		/* Consider this IRQ for balancing if it's movable */
-		if (!__irq_can_set_affinity(bi->desc))
+		if (!__irq_can_set_affinity(bi->desc)) {
+			if (sbalance_debug) {
+				if (bi->desc->action && bi->desc->action->name)
+					pr_info("IRQ%d (%s) unmovable\n",
+						irq_desc_get_irq(bi->desc),
+						bi->desc->action->name);
+				else
+					pr_info("IRQ%d unmovable\n",
+						irq_desc_get_irq(bi->desc));
+			}
 			continue;
+		}
 
 		/* Ignore for this balancing run if something else moved it */
 		if (cpu != bi->prev_cpu) {
