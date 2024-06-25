@@ -196,7 +196,6 @@ static DEFINE_MUTEX(selinux_sdcardfs_lock);
 int selinux_enforcing;
 static int selinux_enforcing_boot;
 
-
 static int __init enforcing_setup(char *str)
 {
 	unsigned long enforcing;
@@ -973,6 +972,7 @@ static int selinux_set_mnt_opts(struct super_block *sb,
 	    !strcmp(sb->s_type->name, "pstore") ||
 	    !strcmp(sb->s_type->name, "bpf") ||
 	    !strcmp(sb->s_type->name, "binder") ||
+	    !strcmp(sb->s_type->name, "bpf") ||
 	    !strcmp(sb->s_type->name, "cgroup") ||
 	    !strcmp(sb->s_type->name, "cgroup2"))
 		sbsec->flags |= SE_SBGENFS;
